@@ -1,0 +1,36 @@
+{
+  "id": "auto-grid",
+  "title": "Auto Grid",
+  "license": "MIT License",
+  "description": "Detect and apply Foundry scene grids from map images.",
+  "version": "VERSION",
+  "download": "https://github.com/MrPrimate/auto-grid/releases/download/VERSION/auto-grid.zip",
+  "manifest": "https://github.com/MrPrimate/auto-grid/releases/download/latest/module.json",
+  "authors": [
+    {
+      "name": "MrPrimate",
+      "email": "jack@mrprimate.co.uk",
+      "patreon": "https://www.patreon.com/MrPrimate",
+      "discord": "https://discord.gg/WzPuRuDJVP"
+    }
+  ],
+  "compatibility": {
+    "minimum": "14.359",
+    "verified": "14.359",
+    "maximum": 14
+  },
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
+  "esmodules": [
+    "dist/main.mjs"
+  ],
+  "styles": [
+    "css/auto-grid.css"
+  ],
+  "packs": []
+}

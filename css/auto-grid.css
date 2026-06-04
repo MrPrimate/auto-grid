@@ -1,0 +1,241 @@
+/* Grid Picker */
+
+.ddb-grid-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 8px;
+}
+
+.ddb-grid-picker-header h3 {
+  margin: 0;
+}
+
+.ddb-grid-picker-canvas {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 0;
+  background: #111;
+  border: 1px solid var(--color-border-light-tertiary, #555);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ddb-grid-picker-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: 70vh;
+}
+
+.ddb-grid-picker-cell {
+  fill: rgba(80, 160, 255, 0.05);
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 4;
+  cursor: pointer;
+  transition: fill 0.1s linear;
+}
+
+.ddb-grid-picker-cell:hover {
+  fill: rgba(80, 160, 255, 0.25);
+}
+
+.ddb-grid-picker-cell.selected {
+  fill: rgba(80, 160, 255, 0.45);
+  stroke: rgba(80, 200, 255, 0.95);
+  stroke-width: 6;
+}
+
+.ddb-grid-picker-line {
+  stroke: rgba(255, 80, 80, 0.85);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  fill: none;
+  shape-rendering: crispEdges;
+}
+
+.ddb-grid-picker-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ddb-grid-picker-preview-header h4 {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.ddb-grid-picker-preview-svg.zoomed {
+  cursor: grab;
+}
+
+.ddb-grid-picker-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+
+.ddb-grid-picker-actions .hint {
+  margin-right: auto;
+}
+
+.ddb-grid-picker-multiplier {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9em;
+}
+
+.ddb-grid-picker-multiplier select {
+  padding: 2px 6px;
+}
+
+.ddb-grid-picker-multiplier.override select {
+  border: 1px solid rgba(255, 180, 60, 0.8);
+  background: rgba(255, 180, 60, 0.12);
+  font-weight: 600;
+}
+
+.ddb-grid-picker-multiplier-state {
+  font-size: 0.75em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 2px;
+  letter-spacing: 0.04em;
+}
+
+.ddb-grid-picker-multiplier-state.auto {
+  background: rgba(80, 200, 120, 0.18);
+  color: #b6e3c2;
+}
+
+.ddb-grid-picker-multiplier-state.override {
+  background: rgba(255, 180, 60, 0.22);
+  color: #ffd99a;
+}
+
+.ddb-grid-picker-review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ddb-grid-picker-preview,
+.ddb-grid-picker-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+
+.ddb-grid-picker-preview h4,
+.ddb-grid-picker-candidates h4 {
+  margin: 0;
+}
+
+.ddb-grid-picker-preview .ddb-grid-picker-svg {
+  background: #111;
+  border: 1px solid var(--color-border-light-tertiary, #555);
+  border-radius: 4px;
+}
+
+.ddb-grid-picker-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+
+.ddb-grid-picker-table th,
+.ddb-grid-picker-table td {
+  padding: 4px 6px;
+  text-align: right;
+  border-bottom: 1px solid var(--color-border-light-tertiary, #444);
+}
+
+.ddb-grid-picker-table th.left,
+.ddb-grid-picker-table td.left {
+  text-align: left;
+}
+
+.ddb-grid-picker-table tr.selected {
+  background: rgba(80, 160, 255, 0.15);
+}
+
+/* Grid Picker - hint mode (drag a 3x3 rect over painted cells) */
+
+.ddb-grid-picker-svg.hint-mode {
+  cursor: crosshair;
+}
+
+.ddb-grid-picker-hint-overlay {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.ddb-grid-picker-hint-rect {
+  fill: rgba(255, 200, 80, 0.18);
+  stroke: rgba(255, 200, 80, 0.95);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  shape-rendering: crispEdges;
+}
+
+.ddb-grid-picker-hint-subline {
+  stroke: rgba(255, 200, 80, 0.75);
+  stroke-width: 0.75;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+  fill: none;
+  pointer-events: none;
+  shape-rendering: crispEdges;
+}
+
+.ddb-grid-picker-hint-handle {
+  fill: rgba(255, 200, 80, 0.95);
+  stroke: rgba(40, 30, 0, 0.85);
+  stroke-width: 1.5;
+  cursor: nwse-resize;
+  pointer-events: all;
+  shape-rendering: crispEdges;
+}
+
+.ddb-grid-picker-hint-handle[data-corner="tr"],
+.ddb-grid-picker-hint-handle[data-corner="bl"] {
+  cursor: nesw-resize;
+}
+
+.ddb-grid-picker-hint-direct {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85em;
+}
+
+.ddb-grid-picker-zoom-group {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.ddb-grid-picker-actions .auto-grid-button {
+  white-space: nowrap;
+}
+
+.ddb-grid-picker-actions .auto-grid-button.icon-only {
+  padding: 4px 8px;
+  min-width: 0;
+}
+
+.ddb-grid-picker-svg.zoomed {
+  cursor: grab;
+}
+
+.ddb-grid-picker-svg.zoomed.hint-mode {

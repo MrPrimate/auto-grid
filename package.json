@@ -1,0 +1,25 @@
+{
+  "name": "auto-grid",
+  "version": "0.1.0",
+  "author": "MrPrimate",
+  "description": "Foundry VTT module for detecting and applying scene grids from map images.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "dev": "node esbuild.config.mjs --watch",
+    "lint": "eslint src/",
+    "lint-fix": "eslint src/ --fix",
+    "test": "node --test tools/test-grid-detector.mjs",
+    "typecheck": "tsc --noEmit",
+    "dev:link": "node ./tools/foundry-dev-link.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "esbuild": "^0.27.3",
+    "eslint": "^9.0.0",
+    "typescript": "^5.9.3",
+    "prompts": "^2.4.2",
+    "typescript-eslint": "^8.0.0"
+  }
+}

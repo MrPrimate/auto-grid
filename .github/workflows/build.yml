@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [24.x]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Use Node.js 24.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+      - name: Get Version
+        shell: bash
+        id: get-version
+        run: echo "release_version=$(node ./.github/workflows/get-version.js)" >> $GITHUB_OUTPUT
+      - name: Build module.json
+        run: node ./.github/workflows/build-module-json.js | jq . > module.json
+      - run: npm ci
+      - name: Build bundle
+        run: npm run build
+      - name: Create Release Zip
+        run: zip -r ./auto-grid.zip module.json dist css lang templates LICENSE.md README.md
+      - name: Create Release
+        id: create_versioned_release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: false
+          name: Release ${{ steps.get-version.outputs.release_version }}
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+          artifacts: './module.json,./auto-grid.zip'
+          tag: ${{ steps.get-version.outputs.release_version }}
+      - name: Discord notification
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_HOOK }}
+          DISCORD_USERNAME: "AutoGrid Release Golem"
+        uses: Ilshidur/action-discord@0.3.2
+        continue-on-error: true
+        with:
+          args: 'AutoGrid ${{ steps.get-version.outputs.release_version }} has been released!'
+      - name: FoundryVTT AutoPublish
+        uses: fjogeleit/http-request-action@v1
+        continue-on-error: true
+        with:
+          url: 'https://api.foundryvtt.com/_api/packages/release_version'
+          method: 'POST'
+          customHeaders: '{"Content-Type": "application/json", "Authorization" : "${{ secrets.FOUNDRY_KEY }}"}'
+          data: '{"dry_run": false, "id" : "auto-grid", "release": {"version" :  "${{ steps.get-version.outputs.release_version }}", "manifest": "https://github.com/${{ github.repository }}/releases/download/${{ steps.get-version.outputs.release_version }}/module.json", "notes" : "https://github.com/${{ github.repository }}/releases/tag/${{ steps.get-version.outputs.release_version }}", "compatibility" : {"minimum": "14", "verified": "14", "maximum": "14"} } }'
