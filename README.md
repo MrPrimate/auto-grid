@@ -17,3 +17,7 @@ Useful API methods include `detectGrid`, `runDetectionForScene`, `applyChoiceToS
 
 
 This module is forked from the DDB Importer code, and if that is active the code there is preferred.
+
+## Does this module use LLMs?
+
+No.
