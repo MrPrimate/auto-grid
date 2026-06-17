@@ -3,7 +3,7 @@ import { MODULE_ID } from "./constants";
 import { openGridPicker } from "./api";
 import { getSceneBackgroundSrc } from "./SceneGridDetector";
 
-function settingEnabled(key: string, fallback = true): boolean {
+function settingEnabled(key: "show-scene-context" | "show-canvas-control", fallback = true): boolean {
   try {
     const value = game.settings.get(MODULE_ID, key);
     return typeof value === "boolean" ? value : fallback;

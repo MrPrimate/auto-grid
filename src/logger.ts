@@ -12,7 +12,8 @@ const LEVELS: Record<LogLevel, number> = {
 
 function configuredLevel(): LogLevel {
   try {
-    const value = game.settings.get("auto-grid", "log-level") as LogLevel;
+    // get() returns fvtt-types' Setting wrapper type, not the raw value, so cast via unknown.
+    const value = game.settings.get("auto-grid", "log-level") as unknown as LogLevel;
     return value in LEVELS ? value : "INFO";
   } catch (_e) {
     return "INFO";

@@ -7,18 +7,16 @@ import {
 } from "./GridResolver";
 import { LEGACY_FLAG_SCOPES, PRIMARY_FLAG_SCOPE } from "./constants";
 
-interface ISceneLike {
-  id?: string;
-  name?: string;
-  background?: { src?: string | null; offsetX?: number; offsetY?: number };
-  levels?: { background?: { src?: string | null } }[];
-  width?: number;
-  height?: number;
-  grid?: { size?: number; type?: number; distance?: number; units?: string };
-  flags?: Record<string, any>;
-  toObject?: () => any;
-  getFlag?: (scope: string, key: string) => any;
-  update: (data: any) => Promise<any>;
+
+// The resolved image to scan: a scene background, or the background of a
+// specific v14 level. The picker resolves this once and threads it through
+// detection and apply so the previewed image and the written-to image cannot
+// diverge if the canvas level changes while the app is open.
+export interface ISceneGridImageSource {
+  src: string;
+  levelId: string | null;
+  levelName: string | null;
+  source: "canvas-level" | "initial-level" | "first-level" | "scene-background";
 }
 
 type CandidateKey =
@@ -69,23 +67,101 @@ function normaliseFlagOptions(options: ISceneGridFlagOptions = {}) {
   return { flagScope, fallbackFlagScopes, minGridSize: options.minGridSize };
 }
 
-function getSceneFlag(scene: ISceneLike, key: string, options: ISceneGridFlagOptions = {}): any {
+function getSceneFlag<T>(scene: Scene, key: string, options: ISceneGridFlagOptions = {}): T | undefined {
   const { flagScope, fallbackFlagScopes } = normaliseFlagOptions(options);
   for (const scope of [flagScope, ...fallbackFlagScopes]) {
     try {
       if (typeof scene.getFlag === "function") {
-        const value = scene.getFlag(scope, key);
-        if (value !== undefined) return value;
+        // getFlag is typed against statically-registered flag scopes; this lookup
+        // is dynamic (runtime scope + fallback scopes), so cast to a loose signature.
+        const getFlag = scene.getFlag as (scope: string, key: string) => unknown;
+        const value = getFlag(scope, key);
+        if (value !== undefined) return value as T;
       }
     } catch (_e) { /* fall through */ }
     const value = scene.flags?.[scope]?.[key];
-    if (value !== undefined) return value;
+    if (value !== undefined) return value as T;
   }
   return undefined;
 }
 
-export function getSceneBackgroundSrc(scene: ISceneLike): string | null {
-  return scene.background?.src ?? scene.levels?.[0]?.background?.src ?? null;
+export function getSceneBackgroundSrc(scene: Scene): string | null {
+  return levelsArray(scene.levels)[0]?.background?.src ?? null;
+}
+
+function validSrc(src: unknown): string | null {
+  return typeof src === "string" && src.trim() !== "" ? src : null;
+}
+
+function levelId(level: ISceneLevelData): string | null {
+  // @ts-expect-error - because this could be an instance with derived id or just a data schema, and we don't model the type to that extent
+  return validSrc(level?.id) ?? validSrc(level?._id);
+}
+
+function levelSource(level: ISceneLevelData, source: ISceneGridImageSource["source"]): ISceneGridImageSource | null {
+  const src = validSrc(level?.background?.src);
+  if (!src) return null;
+  return {
+    src,
+    levelId: levelId(level),
+    levelName: validSrc(level?.name),
+    source,
+  };
+}
+
+function levelsArray(levels: foundry.utils.Collection<ISceneLevelData> | ISceneLevelData[] | null | undefined): ISceneLevelData[] {
+  if (!levels) return [];
+  if (Array.isArray(levels)) return levels;
+  if (Array.isArray(levels.contents)) return levels.contents;
+  if (typeof levels.values === "function") return Array.from(levels.values());
+  try {
+    return Array.from(levels as Iterable<ISceneLevelData>);
+  } catch (_e) {
+    return [];
+  }
+}
+
+function getLevel(scene: Scene, id: string | null | undefined): ISceneLevelData | null {
+  if (!id || !scene.levels) return null;
+  if (typeof scene.levels.get === "function") {
+    const found = scene.levels.get(id);
+    if (found) return found;
+  }
+  return levelsArray(scene.levels).find((level) => levelId(level) === id) ?? null;
+}
+
+// Resolve which image to scan: prefer the level shown on the canvas, then the
+// scene's initial level, then the first level with a background, falling back
+// to the plain scene background.
+export function resolveSceneGridImageSource(scene: Scene): ISceneGridImageSource | null {
+  const canvasSceneId = canvas?.scene?.id;
+  // `level` is a v14 field fvtt-types' Canvas doesn't model (see IActiveSceneLevel note
+  // in types.d.ts);
+  const activeLevel = (canvas as unknown as { level?: IActiveSceneLevel | null } | undefined)?.level;
+  const canvasLevelId = validSrc(activeLevel?.id) ?? validSrc(activeLevel?._id);
+  if (scene.id && canvasSceneId === scene.id && canvasLevelId) {
+    const source = levelSource(getLevel(scene, canvasLevelId), "canvas-level");
+    if (source) return source;
+  }
+
+  const initial = levelSource(getLevel(scene, scene.initialLevel), "initial-level");
+  if (initial) return initial;
+
+  for (const level of levelsArray(scene.levels)) {
+    const source = levelSource(level, "first-level");
+    if (source) return source;
+  }
+
+  return null;
+}
+
+function normalizeImageSource(source: IRunDetectionOptions["imageSource"], scene: Scene): ISceneGridImageSource | null {
+  if (typeof source === "string") {
+    const src = validSrc(source);
+    return src ? { src, levelId: null, levelName: null, source: "scene-background" } : null;
+  }
+  if (source?.src) return source;
+  return resolveSceneGridImageSource(scene);
 }
 
 export async function fetchBackgroundBlob(src: string): Promise<Blob> {
@@ -137,6 +213,16 @@ function wrapOffset(offset: number, originX: number, gridSize: number): number {
   return wrapped;
 }
 
+// Wrap a value into the symmetric range (-period/2, period/2]. Used for the
+// per-level texture offset so the level image shifts less than half a grid
+// cell from its centered position rather than up to a full cell.
+function wrapSymmetric(value: number, period: number): number {
+  if (!(period > 0)) return value;
+  let wrapped = ((value % period) + period) % period;
+  if (wrapped > period / 2) wrapped -= period;
+  return wrapped;
+}
+
 function ensureNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
@@ -158,6 +244,7 @@ export interface ISceneGridDetectionRun {
   candidateList: ICandidateChoice[];
   recommendedKey: CandidateKey | null;
   imageDimensions: { x: number; y: number };
+  imageSource?: ISceneGridImageSource;
 }
 
 export interface ISceneGridApplyResult {
@@ -249,6 +336,10 @@ export interface IRunDetectionOptions {
   flagScope?: string;
   fallbackFlagScopes?: string[];
   minGridSize?: number;
+  // The already-resolved image source to scan. The picker supplies this so
+  // the preview image and detector image cannot diverge if the canvas level
+  // changes while the app is open.
+  imageSource?: ISceneGridImageSource | string | null;
 }
 
 // Run detectGrid against either the full image or a single ROI crop.
@@ -256,7 +347,7 @@ export interface IRunDetectionOptions {
 async function runDetectionOnRoi(
   fullBlob: Blob,
   fullDims: { width: number; height: number },
-  scene: ISceneLike,
+  scene: Scene,
   roi: IRoi | null,
   detectorOpts: { multiplier?: number; searchPaddingFraction?: number; expectedCellPx?: number } & ISceneGridFlagOptions = {},
 ): Promise<IGridDetectionResult | null> {
@@ -270,7 +361,7 @@ async function runDetectionOnRoi(
     }
   }
 
-  const tokenScale = getSceneFlag(scene, "tokenScale", detectorOpts);
+  const tokenScale = getSceneFlag<number>(scene, "tokenScale", detectorOpts);
   const multiplier = detectorOpts.multiplier ?? getMapScaleMultiplier();
   // expectedScale is "painted period / image width" used as the detector's
   // search anchor. tokenScale is computed against the full image; when we
@@ -429,11 +520,12 @@ function mergeDetections(detections: IGridDetectionResult[]): IGridDetectionResu
 // Run grid detection on a scene's background image and return the proposed
 // grid + candidate list. Does not modify the scene.
 export async function runDetectionForScene(
-  scene: ISceneLike,
+  scene: Scene,
   options: IRunDetectionOptions = {},
 ): Promise<ISceneGridDetectionRun> {
-  const src = getSceneBackgroundSrc(scene);
-  if (!src) throw new Error("Scene has no background image");
+  const imageSource = normalizeImageSource(options.imageSource, scene);
+  const src = imageSource?.src;
+  if (!src) throw new Error("Scene has no level/background image");
 
   const fullBlob = await fetchBackgroundBlob(src);
   const fullDims = await readBitmapDimensions(fullBlob);
@@ -463,7 +555,7 @@ export async function runDetectionForScene(
     detection = await runDetectionOnRoi(fullBlob, fullDims, scene, rois?.[0] ?? null, detectorOpts);
   }
 
-  const tokenScale = getSceneFlag(scene, "tokenScale", options);
+  const tokenScale = getSceneFlag<number>(scene, "tokenScale", options);
   const multiplier = options.multiplier ?? getMapScaleMultiplier();
 
   const grid = resolveGrid({
@@ -490,6 +582,7 @@ export async function runDetectionForScene(
     candidateList,
     recommendedKey,
     imageDimensions: { x: fullDims.width, y: fullDims.height },
+    imageSource,
   };
 }
 
@@ -499,13 +592,14 @@ export async function runDetectionForScene(
 // and offsets don't change, only how the resolver projects them onto the
 // Foundry grid.
 export function rebuildDetectionRun(
-  scene: ISceneLike,
+  scene: Scene,
   detection: IGridDetectionResult | null,
   imageDimensions: { x: number; y: number },
   multiplier?: number,
   options: ISceneGridFlagOptions = {},
+  imageSource?: ISceneGridImageSource,
 ): ISceneGridDetectionRun {
-  const tokenScale = getSceneFlag(scene, "tokenScale", options);
+  const tokenScale = getSceneFlag(scene, "tokenScale", options) as number | undefined;
   const m = multiplier ?? getMapScaleMultiplier();
   const grid = resolveGrid({
     detection,
@@ -523,23 +617,28 @@ export function rebuildDetectionRun(
   });
   const candidateList = buildCandidateList(candidates);
   const recommendedKey = pickRecommendedKey(grid, candidateList);
-  return { detection, grid, candidates, candidateList, recommendedKey, imageDimensions };
+  return { detection, grid, candidates, candidateList, recommendedKey, imageDimensions, imageSource };
 }
 
 // Apply a chosen candidate (or the resolveGrid default) to a scene.
 export async function applyChoiceToScene(
-  scene: ISceneLike,
+  scene: Scene,
   run: ISceneGridDetectionRun,
   choice: ICandidateChoice | null,
   options: ISceneGridFlagOptions = {},
 ): Promise<void> {
-  const { imageDimensions, detection, candidates, grid } = run;
+  const { imageDimensions, detection, candidates, grid, imageSource } = run;
   const { flagScope } = normaliseFlagOptions(options);
-  const src = getSceneBackgroundSrc(scene);
+  const src = imageSource?.src ?? getSceneBackgroundSrc(scene);
 
   let gridSize: number;
   let offsetX: number;
   let offsetY: number;
+  // Raw painted offset in image pixels (NOT scaled to scene units). The level
+  // branch needs this to compute the texture phase; the no-level branch uses
+  // the scaled offsetX/offsetY above.
+  let rawOffsetX: number;
+  let rawOffsetY: number;
   let sceneScale: number;
   let gridSource: TGridSource;
 
@@ -547,12 +646,17 @@ export async function applyChoiceToScene(
     gridSize = Math.max(1, Math.round(choice.entry.gridSize));
     offsetX = Math.round(choice.entry.offsetX);
     offsetY = Math.round(choice.entry.offsetY);
+    rawOffsetX = choice.entry.rawPaintedOffsetX;
+    rawOffsetY = choice.entry.rawPaintedOffsetY;
     sceneScale = choice.entry.sceneScale;
     gridSource = choice.source;
   } else {
     gridSize = Math.max(1, Math.round(grid.size));
     offsetX = Math.round(grid.offsetX);
     offsetY = Math.round(grid.offsetY);
+    // resolveGrid stores grid.offsetX = rawOffset * sceneScale; divide back out.
+    rawOffsetX = grid.offsetX / (grid.sceneScale || 1);
+    rawOffsetY = grid.offsetY / (grid.sceneScale || 1);
     sceneScale = grid.sceneScale;
     gridSource = grid.source;
   }
@@ -571,9 +675,72 @@ export async function applyChoiceToScene(
     if (rounded >= 1 && rounded <= 4 && Math.abs(ratio - rounded) < 0.15) appliedMultiplier = rounded;
   }
 
-  // v14 moved offset to top-level shiftX/shiftY; on v13 it lives under
-  // background.offsetX/Y. Write the v14 form when running on v14+, otherwise
-  // fall through to the legacy field.
+  const sharedFlags = {
+    gridSize,
+    gridSource,
+    gridSceneScale: sceneScale,
+    gridMultiplier: appliedMultiplier,
+    gridChoiceKey: choice?.key ?? null,
+    imageDimensions,
+    gridDetection: detection ?? null,
+    gridCandidates: candidates,
+    gridDetectedAt: Date.now(),
+  };
+
+  const gridPayload = {
+    type: ensureNumber(scene.grid?.type, 1),
+    size: gridSize,
+    distance: ensureNumber(scene.grid?.distance, 5),
+    units: scene.grid?.units || "ft",
+  };
+
+  const levelId = imageSource?.levelId ?? null;
+
+  if (levelId) {
+    // Align the resolved level's image to the shared (document) grid via its
+    // texture, leaving scene.width/height untouched. The level background is
+    // rendered centered (anchor 0.5/0.5) and scaled about its center, then
+    // shifted by textures.offsetX/offsetY (canvas px). See
+    // client/canvas/groups/primary.mjs #drawLevelTexture.
+    const texW = imageDimensions.x;
+    const texH = imageDimensions.y;
+    const W = ensureNumber(scene.width, texW);
+    const H = ensureNumber(scene.height, texH);
+
+    // fit:"fill" gives a base scale of sceneRect/texture; the config scale on
+    // top of it must bring the painted period to sceneScale relative to the
+    // native image. When W == texW this is just sceneScale.
+    const scaleX = sceneScale * (texW / W);
+    const scaleY = sceneScale * (texH / H);
+
+    // Phase: a painted line at image px p lands at canvas x
+    //   sceneRect.center.x + offsetX + (p - texW/2) * sceneScale
+    // and must be congruent to the grid origin (shiftX = 0) modulo gridSize.
+    // Solving for offsetX (sceneRect.center.x contributes W/2 over the origin):
+    const texOffsetX = wrapSymmetric(-W / 2 - (rawOffsetX - texW / 2) * sceneScale, gridSize);
+    const texOffsetY = wrapSymmetric(-H / 2 - (rawOffsetY - texH / 2) * sceneScale, gridSize);
+
+    await scene.update({
+      shiftX: 0,
+      shiftY: 0,
+      grid: gridPayload,
+      levels: [{
+        _id: levelId,
+        textures: {
+          scaleX,
+          scaleY,
+          offsetX: Math.round(texOffsetX),
+          offsetY: Math.round(texOffsetY),
+        },
+      }],
+      flags: { [flagScope]: { ...sharedFlags, gridLevelId: levelId } },
+    } as any);
+    return;
+  }
+
+  // No-level path (image came from scene.background): resize the document
+  // canvas and write the document grid offset. v14 moved offset to top-level
+  // shiftX/shiftY; on v13 it lives under background.offsetX/Y.
   const isV14 = typeof game !== "undefined"
     && typeof game.version === "string"
     && Number.parseInt(game.version, 10) >= 14;
@@ -583,25 +750,8 @@ export async function applyChoiceToScene(
     background: {
       src,
     },
-    grid: {
-      type: ensureNumber(scene.grid?.type, 1),
-      size: gridSize,
-      distance: ensureNumber(scene.grid?.distance, 5),
-      units: scene.grid?.units || "ft",
-    },
-    flags: {
-      [flagScope]: {
-        gridSize,
-        gridSource,
-        gridSceneScale: sceneScale,
-        gridMultiplier: appliedMultiplier,
-        gridChoiceKey: choice?.key ?? null,
-        imageDimensions,
-        gridDetection: detection ?? null,
-        gridCandidates: candidates,
-        gridDetectedAt: Date.now(),
-      },
-    },
+    grid: gridPayload,
+    flags: { [flagScope]: sharedFlags },
   };
   if (isV14) {
     updatePayload.shiftX = offsetX;
@@ -668,17 +818,18 @@ function buildSelectionForm(run: ISceneGridDetectionRun, sceneName: string): str
 }
 
 // Top-level entry point: detect, ask the user to pick a candidate, then apply.
-export async function detectAndApplyGridToScene(scene: ISceneLike): Promise<ISceneGridApplyResult> {
+export async function detectAndApplyGridToScene(scene: Scene): Promise<ISceneGridApplyResult> {
   const sceneName = scene.name ?? "scene";
-  if (!getSceneBackgroundSrc(scene)) {
-    ui.notifications?.warn(`"${sceneName}" has no background image to scan.`);
+  const imageSource = resolveSceneGridImageSource(scene);
+  if (!imageSource) {
+    ui.notifications?.warn(`"${sceneName}" has no level/background image to scan.`);
     return { applied: false, reason: "no-background" };
   }
 
   ui.notifications?.info(`Detecting grid for "${sceneName}"...`);
   let run: ISceneGridDetectionRun;
   try {
-    run = await runDetectionForScene(scene);
+    run = await runDetectionForScene(scene, { imageSource });
   } catch (error) {
     const msg = (error as Error).message;
     logger.error(`Grid detection failed for "${sceneName}": ${msg}`, error);
@@ -687,7 +838,7 @@ export async function detectAndApplyGridToScene(scene: ISceneLike): Promise<ISce
   }
 
   if (run.candidateList.length === 0) {
-    await foundry.applications.api.DialogV2.prompt({
+    await foundry.applications.api.DialogV2.prompt<foundry.applications.api.DialogV2.PromptConfig>({
       rejectClose: false,
       window: { title: `Detect Grid: ${sceneName}` },
       content: buildSelectionForm(run, sceneName),
@@ -696,7 +847,7 @@ export async function detectAndApplyGridToScene(scene: ISceneLike): Promise<ISce
     return { applied: false, reason: "no-candidates", run };
   }
 
-  const selectedKey = await foundry.applications.api.DialogV2.wait({
+  const selectedKey = await foundry.applications.api.DialogV2.wait<foundry.applications.api.DialogV2.WaitOptions>({
     rejectClose: false,
     window: { title: `Detect Grid: ${sceneName}` },
     content: buildSelectionForm(run, sceneName),

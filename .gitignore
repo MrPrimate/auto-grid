@@ -2,3 +2,5 @@ node_modules/
 dist/
 module.json
 auto-grid.zip
+foundry/
+foundry-config.yaml

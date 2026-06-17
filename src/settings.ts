@@ -16,6 +16,7 @@ export function registerSettings() {
     scope: "world",
     config: true,
     type: Number,
+    // @ts-expect-error -- numeric choices unsupported by fvtt-types
     choices: {
       1: "1 x 1",
       2: "2 x 2",
