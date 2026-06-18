@@ -160,6 +160,8 @@ declare module "fvtt-types/configuration" {
       //   <Options, AssignmentType, InitializedType, PersistedType>
       // initialized -> Collection (scene.levels), source -> array (scene.toObject().levels).
       levels: ISceneLevels;
+      shiftX: foundry.data.fields.NumberField<{ required: true }>;
+      shiftY: foundry.data.fields.NumberField<{ required: true }>;
     }
   }
 }

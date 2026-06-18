@@ -7,6 +7,10 @@ import {
 } from "./GridResolver";
 import { LEGACY_FLAG_SCOPES, PRIMARY_FLAG_SCOPE } from "./constants";
 
+// Base level id stamped by the DDB importer (matches DDBMap.ts /
+// NativeSceneBuilder). Defined locally to avoid a muncher import (cycle risk).
+const DEFAULT_LEVEL_ID = "defaultLevel0000";
+
 
 // The resolved image to scan: a scene background, or the background of a
 // specific v14 level. The picker resolves this once and threads it through
@@ -629,7 +633,6 @@ export async function applyChoiceToScene(
 ): Promise<void> {
   const { imageDimensions, detection, candidates, grid, imageSource } = run;
   const { flagScope } = normaliseFlagOptions(options);
-  const src = imageSource?.src ?? getSceneBackgroundSrc(scene);
 
   let gridSize: number;
   let offsetX: number;
@@ -696,10 +699,22 @@ export async function applyChoiceToScene(
 
   const levelId = imageSource?.levelId ?? null;
 
-  if (levelId) {
-    // Align the resolved level's image to the shared (document) grid via its
+  // The base/default level defines the scene canvas. Resizing the document for
+  // it makes the image fill the base exactly (fit:"fill" at identity scale), so
+  // it never bleeds into the padding. Texture-scaling (which scales about the
+  // image centre) is reserved for secondary overlay levels that sit on a canvas
+  // some other level already sized.
+  const sceneLevels = levelsArray(scene.levels);
+  const isDefaultLevel = !!levelId && (
+    levelId === scene.initialLevel
+    || levelId === DEFAULT_LEVEL_ID
+    || sceneLevels.length <= 1
+  );
+
+  if (levelId && !isDefaultLevel) {
+    // Secondary level: align its image to the shared (document) grid via its
     // texture, leaving scene.width/height untouched. The level background is
-    // rendered centered (anchor 0.5/0.5) and scaled about its center, then
+    // rendered centred (anchor 0.5/0.5) and scaled about its centre, then
     // shifted by textures.offsetX/offsetY (canvas px). See
     // client/canvas/groups/primary.mjs #drawLevelTexture.
     const texW = imageDimensions.x;
@@ -738,27 +753,24 @@ export async function applyChoiceToScene(
     return;
   }
 
-  // No-level path (image came from scene.background): resize the document
-  // canvas and write the document grid offset. v14 moved offset to top-level
-  // shiftX/shiftY; on v13 it lives under background.offsetX/Y.
-  const isV14 = typeof game !== "undefined"
-    && typeof game.version === "string"
-    && Number.parseInt(game.version, 10) >= 14;
+  // Default/base level (or no-level fallback): resize the document canvas so the
+  // image fills the base, and write the document grid offset. When a base level
+  // is present, also reset its texture to identity to undo any scale a prior run
+  // left behind (which is what caused the image to spill into the padding).
   const updatePayload: any = {
     width: sceneWidth,
     height: sceneHeight,
-    background: {
-      src,
-    },
     grid: gridPayload,
-    flags: { [flagScope]: sharedFlags },
+    flags: { [flagScope]: { ...sharedFlags, gridLevelId: levelId ?? null } },
   };
-  if (isV14) {
-    updatePayload.shiftX = offsetX;
-    updatePayload.shiftY = offsetY;
-  } else {
-    updatePayload.background.offsetX = offsetX;
-    updatePayload.background.offsetY = offsetY;
+  updatePayload.shiftX = offsetX;
+  updatePayload.shiftY = offsetY;
+
+  if (levelId) {
+    updatePayload.levels = [{
+      _id: levelId,
+      textures: { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 },
+    }];
   }
   await scene.update(updatePayload);
 }
