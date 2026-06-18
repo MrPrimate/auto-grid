@@ -9,8 +9,10 @@ function isModuleActive(moduleId: string): boolean {
 }
 
 function registerAutoGrid() {
+  // @ts-expect-error -- hook not modeled by fvtt-types
   Hooks.on("getSceneNavigationContext", addSceneContextOption);
   Hooks.on("getSceneContextOptions", addSceneContextOption);
+  // @ts-expect-error -- hook not modeled by fvtt-types
   Hooks.on("getSceneDirectoryEntryContext", addSceneContextOption);
   Hooks.on("getSceneControlButtons", addCanvasControl);
 }

@@ -28,8 +28,6 @@ const AutoGridApplication = HandlebarsApplicationMixin(ApplicationV2);
 
 export default class SceneGridPickerApp extends AutoGridApplication {
 
-  declare element: HTMLElement;
-
   scene: Scene;
   workflowOptions: ISceneGridFlagOptions;
   step: "select" | "review" = "select";
