@@ -1,3 +1,7 @@
+# 1.0.0
+
+- Stable
+
 # 0.1.2
 
 - Fix offset error.

@@ -1,6 +1,6 @@
 {
   "name": "auto-grid",
-  "version": "0.1.2",
+  "version": "1.0.0",
   "author": "MrPrimate",
   "description": "Foundry VTT module for detecting and applying scene grids from map images.",
   "private": true,

@@ -106,4 +106,4 @@ jobs:
           url: 'https://api.foundryvtt.com/_api/packages/release_version'
           method: 'POST'
           customHeaders: '{"Content-Type": "application/json", "Authorization" : "${{ secrets.FOUNDRY_KEY }}"}'
-          data: '{"dry_run": false, "id" : "auto-grid", "release": {"version" :  "${{ steps.get-version.outputs.release_version }}", "manifest": "https://github.com/${{ github.repository }}/releases/download/${{ steps.get-version.outputs.release_version }}/module.json", "notes" : "https://github.com/${{ github.repository }}/releases/tag/${{ steps.get-version.outputs.release_version }}", "compatibility" : {"minimum": "14", "verified": "14", "maximum": "14"} } }'
+          data: '{"dry_run": false, "id" : "auto-grid", "release": {"version" :  "${{ steps.get-version.outputs.release_version }}", "manifest": "https://github.com/${{ github.repository }}/releases/download/${{ steps.get-version.outputs.release_version }}/module.json", "notes" : "https://github.com/MrPrimate/auto-grid/blob/main/CHANGELOG.md", "compatibility" : {"minimum": "14", "verified": "14", "maximum": "14"} } }'
